@@ -1,0 +1,478 @@
+openapi: 3.1.0
+info:
+  title: Task Management API
+  version: 1.0.0
+  description: |
+    Personal task management REST API (Node.js, Express 5, Prisma, MySQL).
+
+    **Authentication:** call `POST /api/auth/login` (or register), copy `data.token`,
+    then click **Authorize** and paste it. Task routes need it; health and auth routes don't.
+
+    **Response format:** every success is `{ "success": true, "data": ..., "meta"?: ... }`,
+    every error is `{ "success": false, "error": { "code", "message", "details"? } }`.
+
+    **Ownership:** you only ever see and change your own tasks. Another user's task
+    returns 404 (not 403), exactly like a task that doesn't exist.
+servers:
+  - url: http://localhost:3000
+    description: Local development
+
+# Every route needs a token unless it overrides this with `security: []`
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Health
+  - name: Auth
+  - name: Tasks
+  - name: Task tags
+
+paths:
+  /api/health:
+    get:
+      tags: [Health]
+      summary: Check that the API and the database are up
+      security: []
+      responses:
+        "200":
+          description: API and database are up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnvelope"
+              example:
+                success: true
+                data: { status: ok, database: up }
+        "503":
+          description: The database is unreachable (code `DB_DOWN`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Create an account
+      description: |
+        The email is trimmed and lowercased before it's stored.
+        Rate limit: **10 requests per hour per IP**, successful or not.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterInput" }
+      responses:
+        "201":
+          description: Account created; the response includes a token, so the user is logged in
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AuthResult" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "409":
+          description: The email is already registered (code `EMAIL_TAKEN`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in and get a token
+      description: |
+        A wrong password and an unknown email return the **same** 401 response.
+        Rate limit: **5 failed attempts per 15 minutes per IP** (successful logins don't count).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginInput" }
+      responses:
+        "200":
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/AuthResult" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401":
+          description: Wrong email or password (code `INVALID_CREDENTIALS`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /api/tasks:
+    get:
+      tags: [Tasks]
+      summary: List your tasks (paginated, searchable, filterable, sortable)
+      description: Unknown query parameters are rejected with 400. A page past the end returns an empty list, not an error.
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
+        - name: search
+          in: query
+          description: Case-insensitive search in titles. `%` and `_` are matched literally. An empty value means no search.
+          schema: { type: string, maxLength: 100 }
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/TaskStatus" }
+        - name: priority
+          in: query
+          schema: { $ref: "#/components/schemas/TaskPriority" }
+        - name: sortBy
+          in: query
+          schema: { type: string, enum: [createdAt, dueDate], default: createdAt }
+        - name: order
+          in: query
+          description: With `sortBy=dueDate`, tasks without a due date always come last.
+          schema: { type: string, enum: [asc, desc], default: desc }
+      responses:
+        "200":
+          description: One page of tasks, each with its tags
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data, meta]
+                properties:
+                  success: { type: boolean, const: true }
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Task" }
+                  meta: { $ref: "#/components/schemas/PaginationMeta" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Tasks]
+      summary: Create a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TaskInput" }
+            example:
+              title: Learn Express
+              priority: high
+              dueDate: "2026-12-01T09:00:00+02:00"
+      responses:
+        "201":
+          description: Task created (the response doesn't include `tags`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/tasks/{id}:
+    parameters:
+      - $ref: "#/components/parameters/TaskId"
+    get:
+      tags: [Tasks]
+      summary: Get one of your tasks, with its tags
+      responses:
+        "200":
+          description: The task
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/TaskNotFound" }
+    put:
+      tags: [Tasks]
+      summary: Replace a task
+      description: Every field is replaced. Fields you leave out are reset (description and dueDate to null, status to `pending`, priority to `low`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TaskInput" }
+      responses:
+        "200":
+          description: The replaced task
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/TaskNotFound" }
+    patch:
+      tags: [Tasks]
+      summary: Update some fields of a task
+      description: Only the fields you send change. Send `null` to clear description or dueDate. An empty body is rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TaskPatch" }
+            example:
+              status: completed
+      responses:
+        "200":
+          description: The updated task
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/TaskNotFound" }
+    delete:
+      tags: [Tasks]
+      summary: Delete a task
+      responses:
+        "204":
+          description: Deleted (no response body)
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/TaskNotFound" }
+
+  /api/tasks/{id}/tags:
+    parameters:
+      - $ref: "#/components/parameters/TaskId"
+    put:
+      tags: [Task tags]
+      summary: Replace the task's tags
+      description: |
+        Sets the task's tags to exactly this list (like Laravel's `sync()`).
+        An empty list removes every tag. Duplicate ids are ignored. Tags are global (shared by all users).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [tagIds]
+              properties:
+                tagIds:
+                  type: array
+                  maxItems: 20
+                  items: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The task with its new tags
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskResponse" }
+        "400":
+          description: Invalid body (code `VALIDATION_ERROR`) or a tag id that doesn't exist (code `INVALID_TAGS`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/TaskNotFound" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: The token from login or register. Expires after 1 hour by default.
+
+  parameters:
+    TaskId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  schemas:
+    TaskStatus:
+      type: string
+      enum: [pending, in_progress, completed]
+    TaskPriority:
+      type: string
+      enum: [low, medium, high]
+
+    Tag:
+      type: object
+      required: [id, name, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, maxLength: 50 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    Task:
+      type: object
+      required: [id, title, description, status, priority, dueDate, userId, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string, maxLength: 150 }
+        description: { type: [string, "null"], maxLength: 5000 }
+        status: { $ref: "#/components/schemas/TaskStatus" }
+        priority: { $ref: "#/components/schemas/TaskPriority" }
+        dueDate: { type: [string, "null"], format: date-time }
+        userId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        tags:
+          description: Included in the list, get-one and tags responses
+          type: array
+          items: { $ref: "#/components/schemas/Tag" }
+
+    TaskInput:
+      description: Body for creating (POST) or replacing (PUT) a task. Unknown fields are rejected.
+      type: object
+      additionalProperties: false
+      required: [title]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 150, description: Trimmed before saving }
+        description: { type: [string, "null"], maxLength: 5000 }
+        status: { $ref: "#/components/schemas/TaskStatus" }
+        priority: { $ref: "#/components/schemas/TaskPriority" }
+        dueDate:
+          type: [string, "null"]
+          format: date-time
+          description: ISO 8601 with a time zone, e.g. `2026-12-01T09:00:00Z` or `+02:00`. A date on its own is rejected. Stored in UTC.
+
+    TaskPatch:
+      description: Same fields as TaskInput, all optional, but at least one is required.
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        title: { type: string, minLength: 1, maxLength: 150 }
+        description: { type: [string, "null"], maxLength: 5000 }
+        status: { $ref: "#/components/schemas/TaskStatus" }
+        priority: { $ref: "#/components/schemas/TaskPriority" }
+        dueDate: { type: [string, "null"], format: date-time }
+
+    TaskResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, const: true }
+        data: { $ref: "#/components/schemas/Task" }
+
+    User:
+      type: object
+      required: [id, email, name, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    RegisterInput:
+      type: object
+      additionalProperties: false
+      required: [name, email, password]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        email: { type: string, format: email, maxLength: 191 }
+        password:
+          type: string
+          minLength: 8
+          description: At least 8 characters and at most 72 bytes (accented letters and emoji take more than one byte)
+      example:
+        name: Ana
+        email: ana@example.com
+        password: password123
+
+    LoginInput:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 1 }
+      example:
+        email: dev@example.com
+        password: password123
+
+    AuthResult:
+      type: object
+      required: [user, token]
+      properties:
+        user: { $ref: "#/components/schemas/User" }
+        token: { type: string, description: JWT containing only the user id (sub), iat and exp }
+
+    PaginationMeta:
+      type: object
+      required: [page, limit, total, totalPages]
+      properties:
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer, description: Number of matching tasks across all pages }
+        totalPages: { type: integer }
+
+    SuccessEnvelope:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, const: true }
+        data: {}
+
+    ErrorResponse:
+      type: object
+      required: [success, error]
+      properties:
+        success: { type: boolean, const: false }
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Machine-readable, e.g. VALIDATION_ERROR, NOT_FOUND, UNAUTHORIZED, TOKEN_EXPIRED
+            message: { type: string }
+            details:
+              type: array
+              description: Only on VALIDATION_ERROR, one entry per problem
+              items:
+                type: object
+                properties:
+                  location: { type: string, enum: [params, query, body] }
+                  field: { type: [string, "null"] }
+                  message: { type: string }
+
+  responses:
+    ValidationError:
+      description: Invalid request data (code `VALIDATION_ERROR`, with `details`), or malformed JSON (code `INVALID_JSON`)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+          example:
+            success: false
+            error:
+              code: VALIDATION_ERROR
+              message: Invalid request data
+              details:
+                - location: body
+                  field: title
+                  message: "Too small: expected string to have >=1 characters"
+    Unauthorized:
+      description: Missing or malformed token (`UNAUTHORIZED`), invalid token (`INVALID_TOKEN`) or expired token (`TOKEN_EXPIRED`)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    TaskNotFound:
+      description: No such task, or it belongs to another user (code `NOT_FOUND`)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    TooManyRequests:
+      description: Rate limit reached (code `TOO_MANY_REQUESTS`). See the `Retry-After` header for the seconds to wait.
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
