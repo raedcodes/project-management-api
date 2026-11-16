@@ -1,0 +1,20 @@
+info:
+  name: delete task
+  type: http
+  seq: 7
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/api/tasks/:id"
+  params:
+    - name: id
+      value: "{{taskId}}"
+      type: path
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

@@ -1,0 +1,37 @@
+info:
+  name: assign tags to task
+  type: http
+  seq: 6
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/api/tasks/:id/tags"
+  params:
+    - name: id
+      value: "{{taskId}}"
+      type: path
+  body:
+    type: json
+    data: |-
+      {
+        "tagIds": []
+      }
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        // [] is always valid (clears the tags). To assign real tags, paste tag UUIDs
+        // from the database (e.g. Prisma Studio) into tagIds.
+        test("returns the task with its tags", function () {
+          expect(res.getStatus()).to.equal(200);
+          expect(res.getBody().data.tags).to.be.an("array");
+        });
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

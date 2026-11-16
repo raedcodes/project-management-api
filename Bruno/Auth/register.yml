@@ -1,0 +1,36 @@
+info:
+  name: register
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/auth/register"
+  body:
+    type: json
+    data: |-
+      {
+        "name": "Bruno User",
+        "email": "{{registerEmail}}",
+        "password": "password123"
+      }
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: before-request
+      code: bru.setVar("registerEmail", `bruno-${Date.now()}@example.com`);
+    - type: tests
+      code: |-
+        test("returns 201 with a token and no password", function () {
+          expect(res.getStatus()).to.equal(201);
+          expect(res.getBody().data.token).to.be.a("string");
+          expect(res.getBody().data.user).to.not.have.property("password");
+        });
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

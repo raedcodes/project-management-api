@@ -1,0 +1,30 @@
+info:
+  name: replace task
+  type: http
+  seq: 5
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/api/tasks/:id"
+  params:
+    - name: id
+      value: "{{taskId}}"
+      type: path
+  body:
+    type: json
+    data: |-
+      {
+        "title": "Express (replaced)",
+        "description": "updated task",
+        "status": "in_progress",
+        "priority": "high",
+        "dueDate": "2026-12-01T09:00:00Z"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

@@ -1,0 +1,29 @@
+info:
+  name: empty title
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/tasks"
+  body:
+    type: json
+    data: |-
+      { "title": "   " }
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        test("returns 400 VALIDATION_ERROR", function () {
+          expect(res.getStatus()).to.equal(400);
+          expect(res.getBody().error.code).to.equal("VALIDATION_ERROR");
+        });
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

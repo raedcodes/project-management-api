@@ -1,0 +1,40 @@
+info:
+  name: get tasks
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/tasks?page=1&limit=5&sortBy=dueDate&order=asc"
+  params:
+    - name: page
+      value: "1"
+      type: query
+    - name: limit
+      value: "5"
+      type: query
+    - name: sortBy
+      value: dueDate
+      type: query
+    - name: order
+      value: asc
+      type: query
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+        test("returns a page with pagination meta", function () {
+          expect(res.getStatus()).to.equal(200);
+          expect(res.getBody().data).to.be.an("array");
+          expect(res.getBody().meta.total).to.be.a("number");
+          expect(res.getBody().meta.page).to.equal(1);
+        });
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false

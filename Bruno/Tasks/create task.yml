@@ -1,0 +1,27 @@
+info:
+  name: create task
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/tasks"
+  body:
+    type: json
+    data: |-
+      {
+        "title": "Express"
+      }
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: after-response
+      code: bru.setVar("taskId", res.getBody().data.id);
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: false
