@@ -1,0 +1,36 @@
+services:
+  mysql:
+    image: mysql:8.4
+    ports:
+      # Host 3307 (XAMPP may use 3306); bound to 127.0.0.1 so only this machine can connect
+      - "127.0.0.1:3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+      # On first start, the image creates this database and a user with full access to it only
+      MYSQL_DATABASE: task_api
+      MYSQL_USER: task_api
+      MYSQL_PASSWORD: ${DATABASE_PASSWORD:?set DATABASE_PASSWORD in .env}
+    configs:
+      # Init scripts run once, only when mysql_data is empty (first start)
+      - source: shadow_database
+        target: /docker-entrypoint-initdb.d/01-shadow-database.sql
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+configs:
+  # Shadow database used by `prisma migrate dev` to detect schema drift
+  shadow_database:
+    content: |
+      CREATE DATABASE IF NOT EXISTS task_api_shadow CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+      GRANT ALL PRIVILEGES ON task_api_shadow.* TO 'task_api'@'%';
+      -- Separate database for automated tests (wiped between tests)
+      CREATE DATABASE IF NOT EXISTS task_api_test CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+      GRANT ALL PRIVILEGES ON task_api_test.* TO 'task_api'@'%';
+
+volumes:
+  mysql_data:
