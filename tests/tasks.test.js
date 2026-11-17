@@ -3,7 +3,7 @@ import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
 import app from "../src/app.js";
 import { jwtConfig } from "../src/config/jwt.js";
-import { authHeader, createTask, createUser, resetDatabase } from "./helpers.js";
+import { authHeader, createTask, createUser, resetDatabase, prisma } from "./helpers.js";
 
 let owner;
 let other;
@@ -38,6 +38,17 @@ describe("authentication on /api/tasks", () => {
     expect(res.status).toBe(401);
     expect(res.body.error.code).toBe("INVALID_TOKEN");
   });
+
+  it("rejects a valid token whose user was deleted (401)", async () => {
+    const headers = authHeader(owner);
+    await prisma.user.delete({ where: { id: owner.id } });
+
+    const res = await request(app).post("/api/tasks").set(headers).send({ title: "Ghost task" });
+
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe("INVALID_TOKEN");
+  });
+
 });
 
 describe("POST /api/tasks", () => {
