@@ -11,4 +11,14 @@ const login = async (req, res) => {
   return sendSuccess(res, result);
 };
 
-export { register, login };
+const refresh = async (req, res) => {
+  const result = await authService.refresh(req.body.refreshToken);
+  return sendSuccess(res, result);
+};
+
+const logout = async (req, res) => {
+  await authService.logout(req.body.refreshToken);
+  return res.status(204).end();
+};
+
+export { register, login, refresh, logout };

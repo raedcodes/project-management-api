@@ -24,13 +24,14 @@ enum TaskPriority {
 }
 
 model User {
-  id        String   @id @default(uuid(7))
-  email     String   @unique
-  name      String
-  password  String
-  tasks     Task[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String         @id @default(uuid(7))
+  email         String         @unique
+  name          String
+  password      String
+  tasks         Task[]
+  refreshTokens RefreshToken[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 }
 
 model Task {
@@ -56,4 +57,14 @@ model Tag {
   tasks     Task[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid(7))
+  tokenHash String    @unique @db.Char(64) // SHA-256 hex; the raw token is never stored
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  expiresAt DateTime
+  revokedAt DateTime? // set when the token is used (rotation); kept to detect reuse
+  createdAt DateTime  @default(now())
 }

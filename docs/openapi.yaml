@@ -7,6 +7,8 @@ info:
 
     **Authentication:** call `POST /api/auth/login` (or register), copy `data.token`,
     then click **Authorize** and paste it. Task routes need it; health and auth routes don't.
+    Access tokens expire after 15 minutes: send `data.refreshToken` to `POST /api/auth/refresh`
+    for a new pair.
 
     **Response format:** every success is `{ "success": true, "data": ..., "meta"?: ... }`,
     every error is `{ "success": false, "error": { "code", "message", "details"? } }`.
@@ -110,6 +112,55 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /api/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Get a new token pair with a refresh token
+      description: |
+        Each refresh token works **once**: the response has a new access token and a new
+        refresh token, and the one you sent stops working. Sending a used refresh token again
+        is treated as theft and ends every session of that user.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefreshInput" }
+      responses:
+        "200":
+          description: New token pair
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - properties:
+                      data: { $ref: "#/components/schemas/TokenPair" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401":
+          description: Unknown, expired, used or logged-out refresh token (code `INVALID_REFRESH_TOKEN`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Log out (delete the refresh token)
+      description: |
+        Always returns 204, even for an unknown token. The current access token keeps
+        working until it expires (at most 15 minutes).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefreshInput" }
+      responses:
+        "204":
+          description: Logged out
+        "400": { $ref: "#/components/responses/ValidationError" }
 
   /api/tasks:
     get:
@@ -397,12 +448,31 @@ components:
         email: dev@example.com
         password: password123
 
-    AuthResult:
+    RefreshInput:
       type: object
-      required: [user, token]
+      additionalProperties: false
+      required: [refreshToken]
       properties:
-        user: { $ref: "#/components/schemas/User" }
-        token: { type: string, description: JWT containing only the user id (sub), iat and exp }
+        refreshToken: { type: string, minLength: 1, maxLength: 100 }
+
+    TokenPair:
+      type: object
+      required: [token, refreshToken]
+      properties:
+        token:
+          type: string
+          description: Access token (JWT with only sub, iat and exp). Valid 15 minutes.
+        refreshToken:
+          type: string
+          description: Random opaque string. Valid 7 days, works once.
+
+    AuthResult:
+      allOf:
+        - $ref: "#/components/schemas/TokenPair"
+        - type: object
+          required: [user]
+          properties:
+            user: { $ref: "#/components/schemas/User" }
 
     PaginationMeta:
       type: object

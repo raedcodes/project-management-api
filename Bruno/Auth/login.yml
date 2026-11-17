@@ -18,7 +18,9 @@ http:
 runtime:
   scripts:
     - type: after-response
-      code: bru.setVar("token", res.getBody().data.token);
+      code: |-
+        bru.setVar("token", res.getBody().data.token);
+        bru.setVar("refreshToken", res.getBody().data.refreshToken);
     - type: tests
       code: |-
         test("returns 200 with a token", function () {

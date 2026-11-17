@@ -39,7 +39,8 @@ describe("login rate limit (5 failures per 15 minutes)", () => {
 });
 
 describe("register rate limit (10 requests per hour, successful or not)", () => {
-  it("blocks the 11th registration attempt", async () => {
+  // 10 real registrations, each a cost-12 bcrypt hash: slower than Vitest's 5s default
+  it("blocks the 11th registration attempt", { timeout: 15_000 }, async () => {
     for (let i = 0; i < 10; i++) {
       const res = await request(app)
         .post("/api/auth/register")

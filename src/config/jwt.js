@@ -7,7 +7,9 @@ if (!secret || secret.length < 32) {
 
 const jwtConfig = {
   secret,
-  expiresIn: process.env.JWT_EXPIRES_IN || "1h",
+  // Short-lived: a leaked access token is only useful for minutes. Refresh tokens renew it.
+  expiresIn: process.env.JWT_EXPIRES_IN || "15m",
+  refreshTokenDays: Number(process.env.REFRESH_TOKEN_DAYS) || 7,
   // Pinned: verify() only accepts this algorithm, so a token can't pick its own (e.g. "none")
   algorithm: "HS256",
 };

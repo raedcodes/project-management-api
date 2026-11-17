@@ -23,4 +23,9 @@ const loginSchema = z.strictObject({
   password: z.string().min(1),
 });
 
-export { registerSchema, loginSchema };
+// Our refresh tokens are 43 characters (32 random bytes in base64url); anything far off isn't one
+const refreshTokenSchema = z.strictObject({
+  refreshToken: z.string().min(1).max(100),
+});
+
+export { registerSchema, loginSchema, refreshTokenSchema };
