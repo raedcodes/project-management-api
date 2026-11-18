@@ -12,6 +12,9 @@ import { sendError, sendSuccess } from "./utils/api-response.js";
 import { readFileSync } from "node:fs";
 import YAML from "yaml";
 import swaggerUi from "swagger-ui-express";
+// Side-effect import: running the file registers its listener (like an EventServiceProvider)
+import "./listeners/task-completed.listener.js";
+
 
 // OpenAPI spec, read once at startup. ES modules have no __dirname, so the path is
 // resolved relative to this file (works whatever folder the server is started from).

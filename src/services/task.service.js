@@ -1,4 +1,5 @@
 import { prisma } from "../config/database.js";
+import { taskEvents } from "../events/task.events.js";
 import { AppError } from "../utils/app-error.js";
 
 // Prisma error code for "record to update/delete was not found"
@@ -84,19 +85,36 @@ const replaceTask = (userId, id, input) =>
     dueDate: input.dueDate ?? null,
   });
 
-// One atomic query: only matches if the task belongs to userId.
+// One atomic update that only matches if the task belongs to userId.
 // Returns null when there's no match; any other error is re-thrown.
 const updateOwnedTask = async (userId, id, data) => {
+  // To detect the change to "completed", we need the old status (only read when it matters)
+  let previousStatus;
+  if (data.status === "completed") {
+    const current = await prisma.task.findFirst({
+      where: { id, userId },
+      select: { status: true },
+    });
+    previousStatus = current?.status;
+  }
+
+  let task;
   try {
-    // `return await` (not just `return`) so a rejection is caught by this try/catch
-    return await prisma.task.update({ where: { id, userId }, data });
+    task = await prisma.task.update({ where: { id, userId }, data });
   } catch (error) {
     if (error.code === RECORD_NOT_FOUND) {
       return null;
     }
     throw error;
   }
+
+  // Only when the status changes to completed: saving a completed task again sends nothing
+  if (data.status === "completed" && previousStatus !== "completed") {
+    taskEvents.emit("task.completed", task);
+  }
+  return task;
 };
+
 
 const deleteTask = async (userId, id) => {
   try {
