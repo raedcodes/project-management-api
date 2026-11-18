@@ -9,8 +9,10 @@ dotenv.config({ quiet: true });
 process.env.NODE_ENV = "test";
 process.env.DATABASE_NAME = TEST_DATABASE;
 
-// Close this file's connection pool so the test worker can exit cleanly
+// Close this file's connections (database pool and Redis) so the test worker can exit cleanly
 afterAll(async () => {
   const { prisma } = await import("../../src/config/database.js");
   await prisma.$disconnect();
+  const { redis } = await import("../../src/config/redis.js");
+  redis.disconnect();
 });

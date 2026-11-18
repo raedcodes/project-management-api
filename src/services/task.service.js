@@ -1,6 +1,7 @@
 import { prisma } from "../config/database.js";
 import { taskEvents } from "../events/task.events.js";
 import { AppError } from "../utils/app-error.js";
+import { invalidateTaskLists } from "./task-cache.service.js";
 
 // Prisma error code for "record to update/delete was not found"
 const RECORD_NOT_FOUND = "P2025";
@@ -66,10 +67,15 @@ const showTask = (userId, id) =>
     },
   });
 
-const createTask = (userId, input) =>
-  prisma.task.create({
+// Every write clears the user's cached task lists, and waits for it, so the client's
+// next GET /tasks already sees the change.
+const createTask = async (userId, input) => {
+  const task = await prisma.task.create({
     data: { ...pickTaskFields(input), userId },
   });
+  await invalidateTaskLists(userId);
+  return task;
+};
 
 // PATCH: change only the fields that were sent
 const updateTask = (userId, id, input) =>
@@ -108,6 +114,8 @@ const updateOwnedTask = async (userId, id, data) => {
     throw error;
   }
 
+  await invalidateTaskLists(userId);
+
   // Only when the status changes to completed: saving a completed task again sends nothing
   if (data.status === "completed" && previousStatus !== "completed") {
     taskEvents.emit("task.completed", task);
@@ -115,10 +123,10 @@ const updateOwnedTask = async (userId, id, data) => {
   return task;
 };
 
-
 const deleteTask = async (userId, id) => {
   try {
     await prisma.task.delete({ where: { id, userId } });
+    await invalidateTaskLists(userId);
     return true;
   } catch (error) {
     if (error.code === RECORD_NOT_FOUND) {
@@ -139,8 +147,7 @@ const assignTagsToTask = async (userId, taskId, tagIds) => {
       throw new AppError(400, "INVALID_TAGS", "One or more tags do not exist");
     }
 
-    // `return await` (not just `return`) so a rejection is caught by this try/catch
-    return await prisma.task.update({
+    const task = await prisma.task.update({
       where: { id: taskId, userId },
       data: {
         tags: {
@@ -151,6 +158,8 @@ const assignTagsToTask = async (userId, taskId, tagIds) => {
         tags: true, // Include the updated tags in the response
       },
     });
+    await invalidateTaskLists(userId); // the list includes tags
+    return task;
   } catch (error) {
     if (error.code === RECORD_NOT_FOUND) {
       return null;

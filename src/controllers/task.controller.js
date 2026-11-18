@@ -1,6 +1,7 @@
 import * as taskService from "../services/task.service.js";
 import { sendSuccess } from "../utils/api-response.js";
 import { AppError } from "../utils/app-error.js";
+import { rememberTaskList } from "../services/task-cache.service.js";
 
 // Ownership is enforced inside the service queries: a task that doesn't exist
 // and a task owned by someone else both come back as null → 404.
@@ -9,7 +10,12 @@ const taskNotFound = () => new AppError(404, "NOT_FOUND", "Task not found");
 const getTasks = async (req, res) => {
   // Parsed by validate(): numbers coerced, defaults applied (Express 5's req.query is read-only)
   const query = req.validatedQuery;
-  const { tasks, total } = await taskService.listTasks(req.user.id, query);
+  const { tasks, total, cacheHit } = await rememberTaskList(req.user.id, query, () =>
+    taskService.listTasks(req.user.id, query),
+  );
+
+  // Shows whether the answer came from Redis (handy in Bruno and in tests)
+  res.set("X-Cache", cacheHit ? "HIT" : "MISS");
 
   return sendSuccess(res, tasks, 200, {
     page: query.page,
