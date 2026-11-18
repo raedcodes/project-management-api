@@ -7,12 +7,7 @@ const DEV_EMAIL = "dev@example.com";
 const DEV_PASSWORD = "password123";
 
 const seed = async () => {
-  const password = await bcrypt.hash(DEV_PASSWORD, 12);
-  const user = await prisma.user.upsert({
-    where: { email: DEV_EMAIL }, //must match the unique constraint on the model (email is unique)
-    update: { password }, // applied if the record exists
-    create: { email: DEV_EMAIL, name: "Dev User", password }, // applied if the record doesn't exist
-  });
+  const user = await seedUser(DEV_EMAIL, DEV_PASSWORD);
 
   await seedTasks(user.id);
 
@@ -20,6 +15,18 @@ const seed = async () => {
 
   console.log(`Seed done! Log in as ${DEV_EMAIL} / ${DEV_PASSWORD} (user id ${user.id})`);
 };
+
+const seedUser = async (email, password) => {
+  const hashedPassword = await bcrypt.hash(password, 12);
+  const user = await prisma.user.upsert({
+    where: { email },
+    update: { password: hashedPassword },
+    create: { email, name: "Dev User", password: hashedPassword },
+  });
+
+  console.log(`Seeded user: ${email} (id ${user.id})`);
+  return user;
+}
 
 // 25 sample tasks for trying pagination, filters and sorting. Their titles start with
 // "[seed]" so a re-run can tell they exist and skip them (your own tasks don't affect it).
@@ -53,7 +60,6 @@ const seedTasks = async (userId) => {
   console.log(`Created ${tasks.length} sample tasks`);
 };
 
-//seed tags
 const seedTags = async () => {
   await prisma.tag.upsert({
     where: { name: "Important" },
